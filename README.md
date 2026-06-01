@@ -894,3 +894,10 @@ mysql -u capteurs_user -p capteurs_db -e "SELECT * FROM releves ORDER BY horodat
 ---
 
 *Repo du projet : https://github.com/uruzFR/E5.git*
+
+---
+
+## Sources
+
+- [StackForge — Manuel IoT & Serveur Linux](https://stackforge.thrnecore.fr)
+- [Repo Paul-Tools](https://github.com/uruzFR/Paul-Tools)
