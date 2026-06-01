@@ -322,6 +322,8 @@ $capteurs = $pdo->query(
 PHP
 
 chown -R www-data:www-data /var/www/dashboard /var/www/nuc
+
+# VirtualHost par nom : www.dashboard.local
 cat > /etc/apache2/sites-available/dashboard.local.conf <<'VHOST'
 <VirtualHost *:80>
     ServerName www.dashboard.local
@@ -334,6 +336,18 @@ cat > /etc/apache2/sites-available/dashboard.local.conf <<'VHOST'
 </VirtualHost>
 VHOST
 a2ensite dashboard.local.conf > /dev/null 2>&1 || true
+
+# VirtualHost par défaut (accès par IP depuis le LAN) → dashboard
+cat > /etc/apache2/sites-available/000-default.conf <<'VHOST'
+<VirtualHost *:80>
+    DocumentRoot /var/www/dashboard
+    <Directory /var/www/dashboard>
+        AllowOverride All
+        Require all granted
+    </Directory>
+    ErrorLog ${APACHE_LOG_DIR}/default_error.log
+</VirtualHost>
+VHOST
 apache2ctl configtest 2>&1 | grep -v "^$" | sed 's/^/    /' || true
 systemctl reload apache2
 ok "VirtualHost www.dashboard.local"
