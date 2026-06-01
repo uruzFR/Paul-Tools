@@ -3,6 +3,138 @@
 
 ---
 
+## 📡 COLLÈGUES M5STACK — CE QU'IL FAUT FAIRE
+
+> L'IP exacte du serveur et le sketch avec les credentials déjà remplis sont affichés à la fin du `setup.sh` lancé par Paul.
+
+### 1. Installer Arduino IDE
+
+1. Télécharger [Arduino IDE](https://www.arduino.cc/en/software)
+2. `Fichier > Préférences > URL gestionnaire de cartes` → ajouter :
+```
+https://m5stack.oss-cn-shenzhen.aliyuncs.com/resource/arduino/package_m5stack_index.json
+```
+3. `Outils > Type de carte > Gestionnaire de cartes` → chercher **M5Stack** → Installer
+4. `Outils > Gérer les bibliothèques` → installer :
+   - **M5Stack** (ou **M5Core2** selon le modèle)
+   - **PubSubClient** (MQTT — Nick O'Leary)
+   - **M5Unit-ENV** si capteur ENV4 (T/H/P)
+   - **SensirionI2CScd4x** si capteur SCD040 (T/H/CO2)
+5. `Outils > Type de carte` → **M5Stack-Core2** ou **M5Stack-Core**
+6. `Outils > Port` → **/dev/ttyUSB0** (Linux) ou **COMx** (Windows)
+
+> Si le port n'apparaît pas → installer le driver **CP210x** ou **CH9102**
+
+---
+
+### 2. Brancher le capteur
+
+- Câble **Grove** → port **Grove A** (rouge) du M5Stack
+- L'I2C est automatique sur les broches 21 (SDA) / 22 (SCL)
+
+---
+
+### 3. Sketch à copier — capteur ENV4 (T / H / P)
+
+```cpp
+#include <M5Core2.h>       // ou <M5Stack.h> selon le modèle
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include "M5_ENV.h"
+
+// ── À MODIFIER ────────────────────────────────────────────
+const char* WIFI_SSID   = "NOM_DU_WIFI";           // ← ton réseau 2,4 GHz
+const char* WIFI_PASS   = "MOT_DE_PASSE_WIFI";     // ← ton mot de passe
+const char* MQTT_SERVER = "IP_AFFICHEE_PAR_SETUP"; // ← IP donnée par Paul
+const int   MQTT_PORT   = 1883;
+const char* MQTT_USER   = "mqtt";
+const char* MQTT_PASS   = "mqtt_pwd";
+const char* MQTT_TOPIC  = "capteurs/salle1";        // ← nom UNIQUE par M5Stack
+// ──────────────────────────────────────────────────────────
+
+SHT3X sht30; QMP6988 qmp6988;
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+void reconnectMQTT() {
+    while (!client.connected()) {
+        if (client.connect("m5-salle1", MQTT_USER, MQTT_PASS)) // ← ID UNIQUE !
+            M5.Lcd.println("MQTT OK");
+        else delay(2000);
+    }
+}
+
+void setup() {
+    M5.begin(); Wire.begin(); qmp6988.init();
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    M5.Lcd.print("WiFi...");
+    while (WiFi.status() != WL_CONNECTED) delay(500);
+    M5.Lcd.println(" OK  " + WiFi.localIP().toString());
+    client.setServer(MQTT_SERVER, MQTT_PORT);
+}
+
+void loop() {
+    if (!client.connected()) reconnectMQTT();
+    client.loop();
+    float tmp = 0, hum = 0, pres = 0;
+    if (sht30.get() == 0) { tmp = sht30.cTemp; hum = sht30.humidity; }
+    pres = qmp6988.calcPressure() / 100.0f;
+    char payload[128];
+    snprintf(payload, sizeof(payload),
+        "{\"temperature\":%.1f,\"pression\":%.1f,\"humidite\":%.1f}",
+        tmp, pres, hum);
+    client.publish(MQTT_TOPIC, payload);
+    M5.Lcd.printf("T=%.1f H=%.1f P=%.1f\n", tmp, hum, pres);
+    delay(5000);
+}
+```
+
+### Sketch — capteur SCD040 (T / H / CO2)
+
+> ⚠️ Prévenir Paul — il doit adapter la table MySQL et le backend C++ pour le champ `co2`.
+
+```cpp
+#include <SensirionI2CScd4x.h>
+SensirionI2CScd4x scd4x;
+// setup() : scd4x.begin(Wire); scd4x.startPeriodicMeasurement();
+// loop()  :
+uint16_t co2; float tmp, hum;
+scd4x.readMeasurement(co2, tmp, hum);
+snprintf(payload, sizeof(payload),
+    "{\"temperature\":%.1f,\"humidite\":%.1f,\"co2\":%d}", tmp, hum, co2);
+client.publish("capteurs/scd040", payload);
+```
+
+---
+
+### 4. Checklist avant d'uploader
+
+| | Quoi | Pourquoi |
+|---|---|---|
+| ☐ | WiFi **2,4 GHz** uniquement | L'ESP32 ne gère pas le 5 GHz |
+| ☐ | `MQTT_SERVER` = IP donnée par Paul | Sinon connexion impossible |
+| ☐ | `MQTT_TOPIC` unique par appareil | Ex: `capteurs/salle1`, `capteurs/salle2` |
+| ☐ | 1er arg de `connect()` unique | Deux appareils avec le même ID se déconnectent mutuellement |
+
+---
+
+### 5. Dépannage rapide
+
+| Symptôme | Cause | Fix |
+|---|---|---|
+| WiFi ne se connecte pas | Réseau 5 GHz ou mauvais mdp | Forcer 2,4 GHz, vérifier SSID/PASS |
+| `MQTT refusé` | Mauvaise IP / user / pass | Vérifier les 3 constantes |
+| Deux M5Stack se déconnectent | Client ID identique | Changer le 1er arg de `connect()` |
+| Rien dans le dashboard | JSON mal formé | Vérifier le `snprintf` via Serial Monitor |
+
+### Vérifier que les messages arrivent (depuis le serveur de Paul)
+
+```bash
+mosquitto_sub -h localhost -p 1883 -u mqtt -P mqtt_pwd -t "capteurs/#" -v
+```
+
+---
+
 ## ARCHITECTURE COMPLÈTE (identique dans tous les sujets)
 
 ```
