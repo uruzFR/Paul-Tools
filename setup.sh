@@ -420,7 +420,9 @@ ROW_COUNT=$(mysql_root "${DB_NAME}" \
     -e "SELECT COUNT(*) FROM releves WHERE capteur_id='bmp280';" \
     2>/dev/null | tail -1 || echo "0")
 if [[ "${ROW_COUNT:-0}" -ge 1 ]]; then
-    ok "Donnée en MySQL : ${ROW_COUNT} ligne(s) pour capteur bmp280"
+    ok "Donnée en MySQL : test OK (${ROW_COUNT} ligne)"
+    mysql_root "${DB_NAME}" -e "TRUNCATE TABLE releves;" 2>/dev/null
+    ok "Table releves vidée — prête pour les vrais capteurs"
 else
     echo -e "    ${YELLOW}⚠${NC}  Aucune donnée insérée — voir : sudo journalctl -u ${SERVICE} -n 30"
     ERRORS=$((ERRORS + 1))
